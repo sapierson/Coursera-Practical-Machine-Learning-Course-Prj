@@ -1,0 +1,205 @@
+---
+title: 'Coursera Machine Learning Project'
+author: "Shawne A Pierson"
+date: "January 9, 2018"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+## Data Loading and Exploratory Analysis
+
+```{r, echo=TRUE}
+
+# load libraries to generate required graphs and analysis
+library(knitr)
+library(caret);
+library(rattle);
+library(rpart);
+library(rpart.plot)
+library(randomForest);
+library(repmis)
+library(gbm)
+
+# Set my seed value to allow reproducibility
+set.seed(979)
+
+# Set my working directory
+setwd("~/Coursera/Practical Machine Learning/Course Project/Coursera-Practical-Machine-Learning-Course-Prj")
+
+# Read the csv data files
+training <- read.csv("data/pml-training.csv")
+testing <- read.csv("data/pml-testing.csv")
+
+# Partition my training and test datasets
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+Train_Data <- training[inTrain, ]
+Test_Data  <- training[-inTrain, ]
+
+```
+
+## Perform some initial analysis on the Data
+```{r, echo=TRUE}
+dim(Train_Data)
+dim(Test_Data)
+```
+The Training data has 13,737 rows and 160 columns of data.  
+The Test data has 5,885 rows and 160 columns of data.
+
+## Clean the data
+```{r, echo=TRUE}
+My_Non_Zero_Values <- nearZeroVar(Train_Data)
+Train_Data <- Train_Data[, -My_Non_Zero_Values]
+Test_Data  <- Test_Data[, -My_Non_Zero_Values]
+```
+
+## Perform post-Non_Zero_Values analysis on the Data
+```{r, echo=TRUE}
+dim(Train_Data)
+dim(Test_Data)
+```
+The Training data has 13,737 rows and 103 columns of data.  
+The Test data has 5,885 rows and 103 columns of data.
+
+## Tidy up date that contain a large amount of NA's
+
+```{r, echo=FALSE}
+
+My_NA_Data <- sapply(Train_Data, function(x) mean(is.na(x))) > 0.95
+Train_Data <- Train_Data[, My_NA_Data == FALSE]
+Test_Data  <- Test_Data[, My_NA_Data == FALSE]
+
+```
+## Perform post-NAs tidy up analysis on the Data
+```{r, echo=TRUE}
+dim(Train_Data)
+dim(Test_Data)
+```
+
+The Training data has 13,737 rows and 59 columns of data.  
+The Test data has 5,885 rows and 59 columns of data.
+
+From this analysis, we can determine that the first six variables have little predicting power in my mind for the outcome we are seeking. Let's tidy these data further.
+
+```{r, echo=TRUE}
+Train_Data <- Train_Data[, -c(1:6)]
+Test_Data <- Test_Data[, -c(1:6)]
+```
+
+## Perform post-predicting power tidy up analysis on the Data
+```{r, echo=TRUE}
+dim(Train_Data)
+dim(Test_Data)
+```
+
+The Training data has 13,737 rows and 53 columns of data.  
+The Test data has 5,885 rows and 53 columns of data.
+
+## Prediction Models
+
+From the Machine Learning course, I will perform three prediction models (Decision Tree, Generalized Boosted Model, and Random Forest).  Based upon the highest level of accurary, I will select the best fit model and utilize the results of the model for my quiz prediction answers.
+
+### Decision Tree
+
+```{r, echo=TRUE}
+set.seed(979)
+My_Decision_Tree <- rpart(classe ~ ., data=Train_Data, method="class")
+fancyRpartPlot(My_Decision_Tree)
+```
+
+```{r, echo=TRUE}
+# Prediction against my Test_Data
+My_Predict_Tree <- predict(My_Decision_Tree, newdata=Test_Data, type="class")
+My_Confusion_Matrix <- confusionMatrix(My_Predict_Tree, Test_Data$classe)
+My_Confusion_Matrix
+```
+
+
+```{r, echo=TRUE}
+# Generate a plot to determine visual results
+
+My_Confusion_Matrix_Acc <- round(My_Confusion_Matrix$overall['Accuracy'], 4)
+My_Title <- paste("Decision Tree Analysis Accuracy is:", My_Confusion_Matrix_Acc)
+
+plot(My_Confusion_Matrix$table, col = c('cyan'), main = My_Title)
+```
+
+### Generalized Boosted Model (GBM)
+
+```{r, echo=TRUE}
+set.seed(979)
+My_Ctrl_GBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+My_Fit_GBM  <- train(classe ~ ., data=Train_Data, method = "gbm",
+                    trControl = My_Ctrl_GBM, verbose = FALSE)
+My_Fit_GBM$finalModel
+```
+
+
+```{r, echo=TRUE}
+# Test dataset prediction
+My_GBM_Predict <- predict(My_Fit_GBM, newdata=Test_Data)
+My_Confusion_Matrix_GBM <- confusionMatrix(My_GBM_Predict, Test_Data$classe)
+My_Confusion_Matrix_GBM
+```
+
+```{r, echo=TRUE}
+# Generate a plot to determine visual results
+
+My_Confusion_Matrix_GBM_Acc <- round(My_Confusion_Matrix_GBM$overall['Accuracy'], 4)
+My_Title <- paste("GBM Analysis Accuracy is:", My_Confusion_Matrix_GBM_Acc)
+
+plot(My_Confusion_Matrix_GBM$table, col = c('green'), main = My_Title)
+```
+
+### Random Forest
+
+```{r, echo=TRUE}
+set.seed(979)
+My_Ctrl_RF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+My_Fit_RF <- train(classe ~ ., data=Train_Data, method="rf", trControl=My_Ctrl_RF)
+My_Fit_RF$finalModel
+```
+
+
+```{r, echo=TRUE}
+# Execute a prediction against my Test data
+MY_RF_Predict <- predict(My_Fit_RF, newdata=Test_Data)
+My_Confusion_Matrix_RF <- confusionMatrix(MY_RF_Predict, Test_Data$classe)
+My_Confusion_Matrix_RF
+```
+
+
+```{r, echo=TRUE}
+# Generate a plot to determine visual results
+
+My_Confusion_Matrix_RF_Acc <- round(My_Confusion_Matrix_RF$overall['Accuracy'], 4)
+My_Title <- paste("Random First Analysis Accuracy is:", My_Confusion_Matrix_RF_Acc)
+
+plot(My_Confusion_Matrix_RF$table, col = c('purple'), main = My_Title)
+```
+
+
+## Model Analysis Overview
+
+In conclusion, the accuracy of my three regression modeling methods are:
+
+- Decision Tree : 0.6909
+- GBM : 0.9638
+- Random Forest : 0.9939
+
+Therefore, I will execute the Random Forest model in order to predict the 20 quiz results using the test data.
+
+```{r, echo=TRUE}
+MY_Prediction <- predict(My_Fit_RF, newdata = testing)
+MY_Prediction
+
+```
